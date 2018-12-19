@@ -16,6 +16,9 @@
 	#define DEBUG(f_, ...) {}
 #endif
 
+#define C_END 0xff
+#define C_ESC 0xfe
+
 static void flushPendingData (int fd) {
 	int rc;
 	char c;
@@ -25,7 +28,7 @@ static void flushPendingData (int fd) {
 	} while (rc > 0);
 }
 
-static int sendOctet (int fd, char octet) {
+static int sendOctet (int fd, const char octet) {
 	int rc;
 	fd_set rfds;
 	struct timeval timeout;
@@ -76,7 +79,7 @@ static int sendOctet (int fd, char octet) {
 	return 0;
 }
 
-static ssize_t sendData (int fd, char * buf, size_t count) {
+static ssize_t sendData (int fd, const char * buf, size_t count) {
 	int i, rc;
 	ssize_t sentBytes = 0;
 
@@ -85,11 +88,24 @@ static ssize_t sendData (int fd, char * buf, size_t count) {
 
 	// Send each data byte
 	for (i = 0; i < count; i++) {
+		char octet = buf[i];
+
+		// Mask END and ESC characters
+		if (octet == C_END || octet == C_ESC) {
+			rc = sendOctet(fd, (char) C_ESC);
+			if (rc < 0) return -1;
+		}
+
+		// Send current octet
 		rc = sendOctet(fd, buf[i]);
-		// Some error occured ... errno is set correctly
 		if (rc < 0) return -1;
+
 		sentBytes++;
 	}
+
+	// Send end of frame
+	rc = sendOctet(fd, (char) C_END);
+	if (rc < 0) return -1;
 
 	return sentBytes;
 }
