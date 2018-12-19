@@ -1,34 +1,45 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
 
 #define ENABLE_DEBUG
 #ifdef ENABLE_DEBUG
-	#define DEBUG(f_, ...) printf((f_), __VA_ARGS__)
+	#define DEBUG(...) printf(__VA_ARGS__)
 #else
-	#define DEBUG(f_, ...) {}
+	#define DEBUG(...) {}
 #endif
 
 #define C_END 0xff
 #define C_ESC 0xfe
+
+static uint16_t crc16Update (uint16_t crc, char octet) {
+	crc = (uint8_t)(crc >> 8) | (crc << 8);
+	crc ^= octet;
+	crc ^= (uint8_t)(crc & 0xff) >> 4;
+	crc ^= (crc << 8) << 4;
+	crc ^= ((crc & 0xff) << 4) << 1;
+	return crc;
+}
 
 static void flushPendingData (int fd) {
 	int rc;
 	char c;
 	do {
 		rc = read(fd, &c, 1);
-		if (rc) DEBUG("--> Flush 0x%02x\n", c);
+		if (rc) DEBUG("--> FLUSH 0x%02x\n", c);
 	} while (rc > 0);
 }
 
-static int sendOctet (int fd, const char octet) {
+static int sendRawOctet (int fd, char octet) {
 	int rc;
 	fd_set rfds;
 	struct timeval timeout;
@@ -79,33 +90,58 @@ static int sendOctet (int fd, const char octet) {
 	return 0;
 }
 
+static int sendOctet (int fd, char octet) {
+	int rc;
+
+	// Mask END and ESC characters
+	if (octet == C_END || octet == C_ESC) {
+		rc = sendRawOctet(fd, (char) C_ESC);
+		if (rc < 0) return -1;
+	}
+
+	// Send current octet
+	rc = sendRawOctet(fd, octet);
+	if (rc < 0) return -1;
+
+	return 0;
+}
+
 static ssize_t sendData (int fd, const char * buf, size_t count) {
 	int i, rc;
+	uint16_t crc = 0xffff;
 	ssize_t sentBytes = 0;
 
 	// Make sure no old data is left in read queue
 	flushPendingData(fd);
 
 	// Send each data byte
+	DEBUG("--> START OF FRAME\n");
 	for (i = 0; i < count; i++) {
 		char octet = buf[i];
 
-		// Mask END and ESC characters
-		if (octet == C_END || octet == C_ESC) {
-			rc = sendOctet(fd, (char) C_ESC);
-			if (rc < 0) return -1;
-		}
-
-		// Send current octet
-		rc = sendOctet(fd, buf[i]);
+		// Bring data on the wire
+		rc = sendOctet(fd, octet);
 		if (rc < 0) return -1;
+
+		// Update CRC
+		crc = crc16Update(crc, octet);
 
 		sentBytes++;
 	}
 
-	// Send end of frame
-	rc = sendOctet(fd, (char) C_END);
+	// Send CRC
+	DEBUG("--> CRC 0x%04x\n", crc);
+	crc = htons(crc);
+	rc = sendOctet(fd, (char) (crc >> 0));
 	if (rc < 0) return -1;
+	rc = sendOctet(fd, (char) (crc >> 8));
+	if (rc < 0) return -1;
+
+
+	// Send end of frame
+	rc = sendRawOctet(fd, (char) C_END);
+	if (rc < 0) return -1;
+	DEBUG("--> END OF FRAME\n");
 
 	return sentBytes;
 }
