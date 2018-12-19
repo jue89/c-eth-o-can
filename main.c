@@ -9,65 +9,86 @@
 #include <stdio.h>
 #include <errno.h>
 
-#define DEBUG(f_, ...) printf((f_), __VA_ARGS__)
+#define ENABLE_DEBUG
+#ifdef ENABLE_DEBUG
+	#define DEBUG(f_, ...) printf((f_), __VA_ARGS__)
+#else
+	#define DEBUG(f_, ...) {}
+#endif
 
-int sendData (int fd, char * buf, size_t count) {
+static void flushPendingData (int fd) {
 	int rc;
 	char c;
-	size_t i, sentBytes;
-
-	// Flush pending data
 	do {
 		rc = read(fd, &c, 1);
 		if (rc) DEBUG("--> Flush 0x%02x\n", c);
 	} while (rc > 0);
+}
+
+static int sendOctet (int fd, char octet) {
+	int rc;
+	fd_set rfds;
+	struct timeval timeout;
+	char echo;
+
+	// Write byte
+	rc = write(fd, &octet, 1);
+	if (rc == 0) {
+		errno = EBUSY;
+		return -1;
+	} else if (rc < 0) {
+		// Some other error
+		// errno will be set correctly
+		return -1;
+	}
+	DEBUG("SND 0x%02x ... ", octet);
+
+	// Wait up to 1ms for echo
+	FD_ZERO(&rfds);
+	FD_SET(fd, &rfds);
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 1000;
+	rc = select(fd + 1, &rfds, NULL, NULL, &timeout);
+	if (rc == 0) {
+		// Timeout
+		errno = ETIMEDOUT;
+		return -1;
+	} else if (rc < 0) {
+		// Some other error
+		// errno will be set correctly
+		return -1;
+	}
+
+	// Data is readable -> check the echo
+	rc = read(fd, &echo, 1);
+	if (rc != 1) {
+		errno = ETIMEDOUT;
+		return -1;
+	}
+	DEBUG("RCV 0x%02x\n", echo);
+
+	if (octet != echo) {
+		// Someone interrupted the connection
+		errno = ECOMM;
+		return -1;
+	}
+
+	return 0;
+}
+
+static ssize_t sendData (int fd, char * buf, size_t count) {
+	int i, rc;
+	ssize_t sentBytes = 0;
+
+	// Make sure no old data is left in read queue
+	flushPendingData(fd);
 
 	// Send each data byte
-	sentBytes = 0;
 	for (i = 0; i < count; i++) {
-		fd_set rfds;
-		struct timeval timeout;
-
-		// Write byte
-		rc = write(fd, buf + i, 1);
-		if (rc == 0) {
-			errno = EBUSY;
-			return -1;
-		} else if (rc < 0) {
-			return -1;
-		}
-		DEBUG("SND 0x%02x ... ", buf[i]);
-
-		// Wait up to 10ms for echo
-		FD_ZERO(&rfds);
-		FD_SET(fd, &rfds);
-		timeout.tv_sec = 0;
-		timeout.tv_usec = 1000;
-		rc = select(fd + 1, &rfds, NULL, NULL, &timeout);
-		if (rc == 0) {
-			// Timeout
-			errno = ETIMEDOUT;
-			return -1;
-		} else if (rc < 0) {
-			// Some other error
-			return -1;
-		} else {
-			// Data is readable -> check the echo
-			rc = read(fd, &c, 1);
-			if (rc != 1) {
-				errno = ETIMEDOUT;
-				return -1;
-			}
-			DEBUG("RCV 0x%02x\n", c);
-			if (buf[i] != c) {
-				// Someone interrupted the connection
-				errno = ECOMM;
-				return -1;
-			}
-
-			// Write was successful!
-			sentBytes++;
-		}
+		rc = sendOctet(fd, buf[i]);
+		// Some error occured ... errno is set correctly
+		if (rc < 0) return -1;
+		sentBytes++;
 	}
 
 	return sentBytes;
