@@ -1,6 +1,7 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -11,6 +12,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <getopt.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
 
 #define ENABLE_DEBUG
 #ifdef ENABLE_DEBUG
@@ -139,26 +142,51 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 	return sentBytes;
 }
 
+
+int allocTap (char *dev) {
+	struct ifreq ifr;
+	int fd, rc;
+
+	fd = open("/dev/net/tun", O_RDWR);
+	if (fd < 0) return fd;
+
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+	strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+	rc = ioctl(fd, TUNSETIFF, (void *)&ifr);
+	if (rc < 0) {
+		close(fd);
+		return rc;
+	}
+
+	return fd;
+}
+
 void usage (const char *name) {
 	fprintf(stderr, "Usage: %s [opts ...]\n", name);
 	fprintf(stderr, "opts:\n");
-	fprintf(stderr, "     -d [ttyDevice] --tty-device=[ttyDevice]\n");
-	fprintf(stderr, "           Set the TTY device connected to CAN transceiver\n");
+	fprintf(stderr, " -d [ttyDevice] --tty-device=[ttyDevice]\n");
+	fprintf(stderr, "       Set the TTY device connected to CAN transceiver\n");
+	fprintf(stderr, " -n [tapDevice] --tap-device=[tapDevice]\n");
+	fprintf(stderr, "       TAP device to connect to\n");
 }
 
 struct opts {
 	char * ttyDevice;
+	char * tapDevice;
 };
 
 int parseOpts (struct opts *o, int argc, char **argv) {
-	static const char *defOpts = "d:";
+	static const char *defOpts = "d:n:";
 	static struct option defLongOpts[] = {
 		{"tty-device", required_argument, NULL, 'd'},
+		{"tap-device", required_argument, NULL, 'n'},
 		{0, 0, 0, 0}
 	};
 
 	// Set default
 	o->ttyDevice = NULL;
+	o->tapDevice = NULL;
 
 	// Parse opts
 	while (1) {
@@ -167,6 +195,9 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 		switch (c) {
 		case 'd':
 			o->ttyDevice = optarg;
+			break;
+		case 'n':
+			o->tapDevice = optarg;
 			break;
 		default:
 			usage(argv[0]);
@@ -180,6 +211,11 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 		usage(argv[0]);
 		return -1;
 	}
+	if (!o->tapDevice) {
+		fprintf(stderr, "tapDevice must be specified!\n");
+		usage(argv[0]);
+		return -1;
+	}
 
 	return 0;
 }
@@ -187,29 +223,36 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 int main (int argc, char **argv) {
 	int rc;
 	struct opts options;
-	int fd;
+	int fdTTY, fdTAP;
 	struct termios tty;
 
 	// Read cmd line options
 	if (parseOpts(&options, argc, argv)) return EXIT_FAILURE;
 
 	// Setup tty device
-	fd = open(options.ttyDevice, O_RDWR | O_NOCTTY | O_NONBLOCK);
-	if (fd < 0) {
-		printf("Cannot open TTY device: %s\n", strerror(errno));
+	fdTTY = open(options.ttyDevice, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	if (fdTTY < 0) {
+		perror("open TTY device");
 		return EXIT_FAILURE;
 	}
 	memset(&tty, 0, sizeof(tty));
-	tcgetattr(fd, &tty);
+	tcgetattr(fdTTY, &tty);
 	cfmakeraw(&tty);
 	tty.c_cc[VMIN]  = 1; // One input byte is enough to return from read()
 	tty.c_cc[VTIME] = 0;
 	cfsetispeed(&tty, B115200);
 	cfsetospeed(&tty, B115200);
-	tcsetattr(fd, TCSANOW, &tty);
+	tcsetattr(fdTTY, TCSANOW, &tty);
+
+	// Open TAP device
+	fdTAP = allocTap(options.tapDevice);
+	if (fdTAP < 0) {
+		perror("open TAP device");
+		return EXIT_FAILURE;
+	}
 
 	// Send data
-	rc = sendData(fd, argv[1], strlen(argv[1]));
+	rc = sendData(fdTTY, argv[1], strlen(argv[1]));
 	if (rc < 0) {
 		printf("Error: %s\n", strerror(errno));
 		return EXIT_FAILURE;
