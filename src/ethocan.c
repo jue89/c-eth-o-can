@@ -5,6 +5,7 @@
 #include "opts.h"
 #include "setup.h"
 #include "tap2tty.h"
+#include "tty2tap.h"
 
 static void loop (int ttyFd, int tapFd) {
 	static int maxFd = 0;
@@ -21,16 +22,19 @@ static void loop (int ttyFd, int tapFd) {
 	// Wait for incoming data
 	FD_ZERO(&rfds);
 	FD_SET(tapFd, &rfds);
+	FD_SET(ttyFd, &rfds);
 	rc = select(maxFd, &rfds, NULL, NULL, NULL);
 	if (rc <= 0) {
 		return;
 	}
 
-	// Data from TAP device
-	if (FD_ISSET(tapFd, &rfds)) {
+	if (FD_ISSET(ttyFd, &rfds)) {
+		// Data from TTY device
+		tty2tap(ttyFd, tapFd);
+	} else if (FD_ISSET(tapFd, &rfds)) {
+		// Data from TAP device
 		tap2tty(tapFd, ttyFd);
 	}
-
 }
 
 int main (int argc, char **argv) {

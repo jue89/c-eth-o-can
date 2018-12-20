@@ -37,11 +37,11 @@ static int sendRawOctet (int fd, char octet) {
 	}
 	DEBUG("SND 0x%02x ... ", octet);
 
-	// Wait up to 1ms for echo
+	// Wait up to 5ms for echo
 	FD_ZERO(&rfds);
 	FD_SET(fd, &rfds);
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 1000;
+	timeout.tv_usec = OCTET_TIMEOUT;
 	rc = select(fd + 1, &rfds, NULL, NULL, &timeout);
 	if (rc == 0) {
 		// Timeout
@@ -134,8 +134,8 @@ retry:
 		perror("write to tty device");
 		printf("TAP > TTY: %zu bytes ...", n);
 		if (tries-- > 0) {
-			int delay = rand() & 0xfff;
-			delay += 5000; // 5000..9095us
+			int delay = rand() & 0xfff; // 0..4095us
+			delay += 2 * OCTET_TIMEOUT;
 			printf(" failed. Retry in %d us.\n", delay);
 			usleep(delay);
 			goto retry;
