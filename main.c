@@ -92,23 +92,19 @@ static int sendRawOctet (int fd, char octet) {
 }
 
 static int sendOctet (int fd, char octet) {
-	int rc;
-
 	// Mask END and ESC characters
 	if (octet == C_END || octet == C_ESC) {
-		rc = sendRawOctet(fd, (char) C_ESC);
-		if (rc < 0) return -1;
+		if (sendRawOctet(fd, (char) C_ESC)) return -1;
 	}
 
 	// Send current octet
-	rc = sendRawOctet(fd, octet);
-	if (rc < 0) return -1;
+	if (sendRawOctet(fd, octet)) return -1;
 
 	return 0;
 }
 
 static ssize_t sendData (int fd, const char * buf, size_t count) {
-	int i, rc;
+	int i;
 	uint16_t crc = 0xffff;
 	ssize_t sentBytes = 0;
 
@@ -121,8 +117,7 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 		char octet = buf[i];
 
 		// Bring data on the wire
-		rc = sendOctet(fd, octet);
-		if (rc < 0) return -1;
+		if (sendOctet(fd, octet)) return -1;
 
 		// Update CRC
 		crc = crc16Update(crc, octet);
@@ -133,15 +128,12 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 	// Send CRC
 	DEBUG("--> CRC 0x%04x\n", crc);
 	crc = htons(crc);
-	rc = sendOctet(fd, (char) (crc >> 0));
-	if (rc < 0) return -1;
-	rc = sendOctet(fd, (char) (crc >> 8));
-	if (rc < 0) return -1;
+	if (sendOctet(fd, (char) (crc >> 0))) return -1;
+	if (sendOctet(fd, (char) (crc >> 8))) return -1;
 
 
 	// Send end of frame
-	rc = sendRawOctet(fd, (char) C_END);
-	if (rc < 0) return -1;
+	if(sendRawOctet(fd, (char) C_END)) return -1;
 	DEBUG("--> END OF FRAME\n");
 
 	return sentBytes;
