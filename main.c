@@ -14,14 +14,16 @@
 #include <getopt.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <time.h>
 
-#define ENABLE_DEBUG
+//#define ENABLE_DEBUG
 #ifdef ENABLE_DEBUG
 	#define DEBUG(...) printf(__VA_ARGS__)
 #else
 	#define DEBUG(...) {}
 #endif
 
+#define MTU 2048
 #define C_END 0xff
 #define C_ESC 0xfe
 
@@ -142,6 +144,62 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 	return sentBytes;
 }
 
+void tap2tty (int tapFd, int ttyFd) {
+	char buf[MTU];
+	ssize_t n;
+	int tries = 3;
+
+	n = read(tapFd, buf, sizeof(buf));
+	if (n < 0) {
+		perror("read from tap device");
+		return;
+	}
+
+retry:
+	if (sendData(ttyFd, buf, n) < 0) {
+		perror("write to tty device");
+		printf("TAP > TTY: %d Bytes ...", n);
+		if (tries-- > 0) {
+			int delay = rand() & 0xfff;
+			delay += 5000; // 5000..9095us
+			printf(" failed. Retry in %d us.\n", delay);
+			usleep(delay);
+			goto retry;
+		} else {
+			printf(" failed. Drop.\n");
+		}
+	} else {
+		printf("TAP > TTY: %d Bytes ... sent.\n", n);
+	}
+}
+
+void loop (int ttyFd, int tapFd) {
+	static int maxFd = 0;
+	int rc;
+	fd_set rfds;
+
+	// Search highest file descriptor
+	if (!maxFd) {
+		maxFd = ttyFd;
+		if (maxFd < tapFd) maxFd = tapFd;
+		maxFd++;
+	}
+
+	// Wait for incoming data
+	FD_ZERO(&rfds);
+	FD_SET(tapFd, &rfds);
+	rc = select(maxFd, &rfds, NULL, NULL, NULL);
+	if (rc <= 0) {
+		return;
+	}
+
+	// Data from TAP device
+	if (FD_ISSET(tapFd, &rfds)) {
+		tap2tty(tapFd, ttyFd);
+	}
+
+}
+
 int allocTty (char *dev) {
 	int fd;
 	struct termios tty;
@@ -239,9 +297,10 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 }
 
 int main (int argc, char **argv) {
-	int rc;
 	struct opts options;
 	int ttyFd, tapFd;
+
+	srand(time(NULL));
 
 	// Read cmd line options
 	if (parseOpts(&options, argc, argv)) return EXIT_FAILURE;
@@ -260,11 +319,8 @@ int main (int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	// Send data
-	rc = sendData(ttyFd, argv[1], strlen(argv[1]));
-	if (rc < 0) {
-		printf("Error: %s\n", strerror(errno));
-		return EXIT_FAILURE;
+	while (1) {
+		loop(ttyFd, tapFd);
 	}
 
 	return EXIT_SUCCESS;
