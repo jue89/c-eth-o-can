@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "crc16.h"
+#include "debug.h"
 #include "config.h"
 #include "tty2tap.h"
 
@@ -15,6 +16,7 @@ static int readData(int fd, char *buf, size_t bufSize) {
 	fd_set rfds;
 	struct timeval timeout;
 
+	DEBUG("--> START OF FRAME");
 readOctet:
 	// Make sure we have enough room for the message
 	if (n >= bufSize) {
@@ -45,12 +47,12 @@ readOctet:
 		// TODO: Find good errno
 		return -1;
 	}
+	DEBUG("RCV 0x%02x (%04d)\n", buf[n], n);
 
 	if (esc) {
 		// If the last received character was C_ESC
 		// just read the next octet from the line
 		esc = 0;
-		goto readOctet;
 	} else if (buf[n] == C_ESC) {
 		esc = 1;
 		goto readOctet;
@@ -62,14 +64,15 @@ readOctet:
 			return -1;
 		}
 
+		DEBUG("--> START OF FRAME");
 		// Remove CRC from received packet
 		return n - 2;
-	} else {
-		// Received data octet
-		crc = crc16Update(crc, buf[n]);
-		n++;
-		goto readOctet;
 	}
+
+	// Received data octet
+	crc = crc16Update(crc, buf[n]);
+	n++;
+	goto readOctet;
 }
 
 void tty2tap (int ttyFd, int tapFd) {
