@@ -88,4 +88,6 @@ void tty2tap (int ttyFd, int tapFd) {
 	if (write(tapFd, buf, n) < 0) {
 		perror("write to tap device");
 	}
+
+	printf("TAP < TTY: %zu bytes reveived.\n", n);
 }
