@@ -142,6 +142,24 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 	return sentBytes;
 }
 
+int allocTty (char *dev) {
+	int fd;
+	struct termios tty;
+
+	fd = open(dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	if (fd < 0) return fd;
+
+	memset(&tty, 0, sizeof(tty));
+	tcgetattr(fd, &tty);
+	cfmakeraw(&tty);
+	tty.c_cc[VMIN]  = 1; // One input byte is enough to return from read()
+	tty.c_cc[VTIME] = 0;
+	cfsetispeed(&tty, B115200);
+	cfsetospeed(&tty, B115200);
+	tcsetattr(fd, TCSANOW, &tty);
+
+	return fd;
+}
 
 int allocTap (char *dev) {
 	struct ifreq ifr;
@@ -223,36 +241,27 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 int main (int argc, char **argv) {
 	int rc;
 	struct opts options;
-	int fdTTY, fdTAP;
-	struct termios tty;
+	int ttyFd, tapFd;
 
 	// Read cmd line options
 	if (parseOpts(&options, argc, argv)) return EXIT_FAILURE;
 
-	// Setup tty device
-	fdTTY = open(options.ttyDevice, O_RDWR | O_NOCTTY | O_NONBLOCK);
-	if (fdTTY < 0) {
+	// Open tty device
+	ttyFd = allocTty(options.ttyDevice);
+	if (ttyFd < 0) {
 		perror("open TTY device");
 		return EXIT_FAILURE;
 	}
-	memset(&tty, 0, sizeof(tty));
-	tcgetattr(fdTTY, &tty);
-	cfmakeraw(&tty);
-	tty.c_cc[VMIN]  = 1; // One input byte is enough to return from read()
-	tty.c_cc[VTIME] = 0;
-	cfsetispeed(&tty, B115200);
-	cfsetospeed(&tty, B115200);
-	tcsetattr(fdTTY, TCSANOW, &tty);
 
 	// Open TAP device
-	fdTAP = allocTap(options.tapDevice);
-	if (fdTAP < 0) {
+	tapFd = allocTap(options.tapDevice);
+	if (tapFd < 0) {
 		perror("open TAP device");
 		return EXIT_FAILURE;
 	}
 
 	// Send data
-	rc = sendData(fdTTY, argv[1], strlen(argv[1]));
+	rc = sendData(ttyFd, argv[1], strlen(argv[1]));
 	if (rc < 0) {
 		printf("Error: %s\n", strerror(errno));
 		return EXIT_FAILURE;
