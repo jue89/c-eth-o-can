@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
+#include <getopt.h>
 
 #define ENABLE_DEBUG
 #ifdef ENABLE_DEBUG
@@ -146,14 +147,66 @@ static ssize_t sendData (int fd, const char * buf, size_t count) {
 	return sentBytes;
 }
 
+void usage (const char *name) {
+	fprintf(stderr, "Usage: %s [opts ...]\n", name);
+	fprintf(stderr, "opts:\n");
+	fprintf(stderr, "     -d [ttyDevice] --tty-device=[ttyDevice]\n");
+	fprintf(stderr, "           Set the TTY device connected to CAN transceiver\n");
+}
+
+struct opts {
+	char * ttyDevice;
+};
+
+int parseOpts (struct opts *o, int argc, char **argv) {
+	static const char *defOpts = "d:";
+	static struct option defLongOpts[] = {
+		{"tty-device", required_argument, NULL, 'd'},
+		{0, 0, 0, 0}
+	};
+
+	// Set default
+	o->ttyDevice = NULL;
+
+	// Parse opts
+	while (1) {
+		int c = getopt_long(argc, argv, defOpts, defLongOpts, NULL);
+		if (c == -1) break;
+		switch (c) {
+		case 'd':
+			o->ttyDevice = optarg;
+			break;
+		default:
+			usage(argv[0]);
+			return -1;
+		}
+	}
+
+	// Enforece required opts
+	if (!o->ttyDevice) {
+		fprintf(stderr, "ttyDevice must be specified!\n");
+		usage(argv[0]);
+		return -1;
+	}
+
+	return 0;
+}
+
 int main (int argc, char **argv) {
 	int rc;
+	struct opts options;
 	int fd;
 	struct termios tty;
 
-	fd = open ("/dev/ttyAMA0", O_RDWR | O_NOCTTY | O_NONBLOCK);
+	// Read cmd line options
+	if (parseOpts(&options, argc, argv)) return EXIT_FAILURE;
 
 	// Setup tty device
+	fd = open(options.ttyDevice, O_RDWR | O_NOCTTY | O_NONBLOCK);
+	if (fd < 0) {
+		printf("Cannot open TTY device: %s\n", strerror(errno));
+		return EXIT_FAILURE;
+	}
 	memset(&tty, 0, sizeof(tty));
 	tcgetattr(fd, &tty);
 	cfmakeraw(&tty);
