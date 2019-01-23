@@ -7,7 +7,7 @@
 
 int main (int argc, char **argv) {
 	struct opts options;
-	int ttyFd, tapFd;
+	int ttyFd, tapFd, senseFd;
 
 	srand(time(NULL));
 
@@ -28,7 +28,14 @@ int main (int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	loopEmulated(ttyFd, tapFd);
+	// Open sense GPIO
+	senseFd = allocSenseGpio(options.sensePath);
+	if (senseFd < 0) {
+		perror("open sense GPIO");
+		return EXIT_FAILURE;
+	}
+
+	loopEmulated(ttyFd, tapFd, senseFd);
 
 	return EXIT_SUCCESS;
 }

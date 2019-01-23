@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <string.h>
 #include <termios.h>
 #include <sys/ioctl.h>
@@ -46,4 +47,28 @@ int allocTap (char *dev) {
 	}
 
 	return fd;
+}
+
+static int setGpioOption (const char *base, const char *opt, const char *val) {
+	int fd;
+	char path[256];
+
+	snprintf(path, sizeof(path), "%s/%s", base, opt);
+	fd = open(path, O_RDWR);
+	if (fd < 0) return fd;
+	write(fd, val, strlen(val));
+	close(fd);
+	return 0;
+}
+
+int allocSenseGpio (const char *base) {
+	char path[256];
+
+	// Set direction and interrupt edge
+	if (setGpioOption(base, "direction", "in")) return -1;
+	if (setGpioOption(base, "edge", "both")) return -1;
+
+	// Finally open value file
+	snprintf(path, sizeof(path), "%s/value", base);
+	return open(path, O_RDONLY);
 }

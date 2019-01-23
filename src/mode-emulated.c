@@ -230,7 +230,7 @@ static void tty2tap (int ttyFd, int tapFd) {
 	printf("TAP < TTY: %zu bytes reveived.\n", n);
 }
 
-void loopEmulated (int ttyFd, int tapFd) {
+void loopEmulated (int ttyFd, int tapFd, int senseFd) {
 	static int maxFd = 0;
 	int rc;
 	fd_set rfds;

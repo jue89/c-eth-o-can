@@ -9,19 +9,23 @@ static void usage (const char *name) {
 	fprintf(stderr, "       Set the TTY device connected to CAN transceiver\n");
 	fprintf(stderr, " -n [tapDevice] --tap-device=[tapDevice]\n");
 	fprintf(stderr, "       TAP device to connect to\n");
+	fprintf(stderr, " -s [senseGpioPath] --sense-gpio=[senseGpioPath]\n");
+	fprintf(stderr, "       Path to the exported GPIO (e.g. /sys/class/gpio/gpio27)\n");
 }
 
 int parseOpts (struct opts *o, int argc, char **argv) {
-	static const char *defOpts = "d:n:";
+	static const char *defOpts = "d:n:s:";
 	static struct option defLongOpts[] = {
 		{"tty-device", required_argument, NULL, 'd'},
 		{"tap-device", required_argument, NULL, 'n'},
+		{"sense-gpio", required_argument, NULL, 's'},
 		{0, 0, 0, 0}
 	};
 
 	// Set default
 	o->ttyDevice = NULL;
 	o->tapDevice = NULL;
+	o->sensePath = NULL;
 
 	// Parse opts
 	while (1) {
@@ -33,6 +37,9 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 			break;
 		case 'n':
 			o->tapDevice = optarg;
+			break;
+		case 's':
+			o->sensePath = optarg;
 			break;
 		default:
 			usage(argv[0]);
@@ -48,6 +55,11 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 	}
 	if (!o->tapDevice) {
 		fprintf(stderr, "tapDevice must be specified!\n");
+		usage(argv[0]);
+		return -1;
+	}
+	if (!o->sensePath) {
+		fprintf(stderr, "senseGpioPath must be specified!\n");
 		usage(argv[0]);
 		return -1;
 	}
