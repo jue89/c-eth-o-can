@@ -1,41 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
-#include <sys/select.h>
 #include "opts.h"
 #include "setup.h"
-#include "tap2tty.h"
-#include "tty2tap.h"
-
-static void loop (int ttyFd, int tapFd) {
-	static int maxFd = 0;
-	int rc;
-	fd_set rfds;
-
-	// Search highest file descriptor
-	if (!maxFd) {
-		maxFd = ttyFd;
-		if (maxFd < tapFd) maxFd = tapFd;
-		maxFd++;
-	}
-
-	// Wait for incoming data
-	FD_ZERO(&rfds);
-	FD_SET(tapFd, &rfds);
-	FD_SET(ttyFd, &rfds);
-	rc = select(maxFd, &rfds, NULL, NULL, NULL);
-	if (rc <= 0) {
-		return;
-	}
-
-	if (FD_ISSET(ttyFd, &rfds)) {
-		// Data from TTY device
-		tty2tap(ttyFd, tapFd);
-	} else if (FD_ISSET(tapFd, &rfds)) {
-		// Data from TAP device
-		tap2tty(tapFd, ttyFd);
-	}
-}
+#include "mode-emulated.h"
 
 int main (int argc, char **argv) {
 	struct opts options;
@@ -60,9 +28,7 @@ int main (int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	while (1) {
-		loop(ttyFd, tapFd);
-	}
+	loopEmulated(ttyFd, tapFd);
 
 	return EXIT_SUCCESS;
 }

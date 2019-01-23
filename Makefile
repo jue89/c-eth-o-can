@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-Wall
-SOURCES=crc16.c opts.c setup.c tap2tty.c tty2tap.c ethocan.c
+SOURCES=crc16.c mode-emulated.c opts.c setup.c ethocan.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=ethocan
 
