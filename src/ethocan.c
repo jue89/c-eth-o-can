@@ -1,9 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
 #include "opts.h"
 #include "setup.h"
 #include "mode-emulated.h"
+#include "mode-native.h"
 
 int main (int argc, char **argv) {
 	struct opts options;
@@ -35,7 +37,14 @@ int main (int argc, char **argv) {
 		return EXIT_FAILURE;
 	}
 
-	loopEmulated(ttyFd, tapFd, senseFd);
+	if (strcmp(options.mode, "emulated") == 0) {
+		loopEmulated(ttyFd, tapFd, senseFd);
+	} else if (strcmp(options.mode, "native") == 0) {
+		loopNative(ttyFd, tapFd, senseFd);
+	} else {
+		fprintf(stderr, "Unknow mode: %s\n", options.mode);
+		return EXIT_FAILURE;
+	}
 
 	return EXIT_SUCCESS;
 }

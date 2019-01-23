@@ -2,6 +2,7 @@
 #define OPTS_h
 
 struct opts {
+	char * mode;
 	char * ttyDevice;
 	char * tapDevice;
 	char * sensePath;

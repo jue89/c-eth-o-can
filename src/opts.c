@@ -14,8 +14,9 @@ static void usage (const char *name) {
 }
 
 int parseOpts (struct opts *o, int argc, char **argv) {
-	static const char *defOpts = "d:n:s:";
+	static const char *defOpts = "m:d:n:s:";
 	static struct option defLongOpts[] = {
+		{"mode", required_argument, NULL, 'm'},
 		{"tty-device", required_argument, NULL, 'd'},
 		{"tap-device", required_argument, NULL, 'n'},
 		{"sense-gpio", required_argument, NULL, 's'},
@@ -23,6 +24,7 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 	};
 
 	// Set default
+	o->mode = "native";
 	o->ttyDevice = NULL;
 	o->tapDevice = NULL;
 	o->sensePath = NULL;
@@ -32,6 +34,9 @@ int parseOpts (struct opts *o, int argc, char **argv) {
 		int c = getopt_long(argc, argv, defOpts, defLongOpts, NULL);
 		if (c == -1) break;
 		switch (c) {
+		case 'm':
+			o->mode = optarg;
+			break;
 		case 'd':
 			o->ttyDevice = optarg;
 			break;
