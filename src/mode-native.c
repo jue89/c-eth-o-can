@@ -55,7 +55,7 @@ static void host2net(int ttyFd, int tapFd, int senseFd) {
 	ssize_t n;
 
 	// Read packet from TAP device
-	n = read(ttyFd, pkt.data, MTU);
+	n = read(tapFd, pkt.data, MTU);
 	if (n < 0) {
 		perror("read from tty device");
 		return;
@@ -77,7 +77,7 @@ static void host2net(int ttyFd, int tapFd, int senseFd) {
 		if (rc < 1) return;
 
 		// RDY line is high -> go ahead!
-		if (strValue[0] == '1') break;
+		if (strValue[0] == '0') break;
 
 		// Wait for changing line
 		FD_ZERO(&rfds);
@@ -119,7 +119,7 @@ extern void loopNative (int ttyFd, int tapFd, int senseFd) {
 			net2host(ttyFd, tapFd);
 		} else if (FD_ISSET(tapFd, &rfds)) {
 			// Data from TAP device
-			host2net(tapFd, ttyFd, senseFd);
+			host2net(ttyFd, tapFd, senseFd);
 		}
 	}
 }
