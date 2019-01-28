@@ -1,0 +1,3 @@
+[submodule "nic/RIOT"]
+	path = nic/RIOT
+	url = https://github.com/jue89/RIOT.git
